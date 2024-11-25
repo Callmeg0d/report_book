@@ -1,8 +1,6 @@
 import psycopg2
 
 
-#DB_NAME = 'report_card'
-
 def create_database(db_name):
     conn = psycopg2.connect(dbname='postgres', user='postgres', password='4339', host='localhost')
     conn.autocommit = True  # Включаем автокоммит для создания базы данных

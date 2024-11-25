@@ -1,7 +1,7 @@
 from PyQt5 import QtWidgets
 from psycopg2 import sql
 import psycopg2
-#from main.database import DB_NAME
+
 import bcrypt
 from dotenv import load_dotenv
 import os
