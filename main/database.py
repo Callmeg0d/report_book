@@ -6,7 +6,7 @@ def create_database(db_name):
     conn.autocommit = True  # Включаем автокоммит для создания базы данных
     cursor = conn.cursor()
 
-    # Проверяем, существует ли база данных
+    # Проверяем, существует ли бд
     cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
     exists = cursor.fetchone()
 
