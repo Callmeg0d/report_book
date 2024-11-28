@@ -2,7 +2,6 @@ from PyQt5 import QtWidgets
 from psycopg2 import sql
 import psycopg2
 
-import bcrypt
 from dotenv import load_dotenv
 import os
 
@@ -120,56 +119,23 @@ class RegistrationPage(QtWidgets.QWidget):
         conn = connect_db()
         cursor = conn.cursor()
 
-        # Проверяем, существует ли пользователь
-        query = sql.SQL("SELECT * FROM users WHERE username = %s")
-        cursor.execute(query, (username,))
+        try:
+            cursor.execute(
+                "SELECT register_user(%s, %s, %s, %s, %s, %s, %s)", #TODO подумать над паролем, сейчас он через бд
+                (username, password, first_name, last_name, middle_name, position, group)
+            )
 
-        if cursor.fetchone() is not None:
+            result = cursor.fetchone()[0]
+            conn.commit()
+            return result
+
+        except Exception as e:
+            print(f"Ошибка: {e}")
+            return False
+
+        finally:
             cursor.close()
             conn.close()
-            return False  # Пользователь уже существует
-
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-
-        # Регистрация нового пользователя
-        insert_user_query = sql.SQL("INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id")
-        cursor.execute(insert_user_query, (username, hashed_password))
-
-        user_id = cursor.fetchone()[0]  # Получаем ID нового пользователя
-
-        if position == "Студент":
-            # Проверяем существует ли группа в таблице groups_name
-            cursor.execute(sql.SQL("SELECT id FROM groups_name WHERE group_name = %s"), (group,))
-            group_row = cursor.fetchone()
-
-            if group_row is None:
-                # Если группа не существует, добавляем её в таблицу groups_name
-                cursor.execute(sql.SQL("INSERT INTO groups_name (group_name) VALUES (%s) RETURNING id"), (group,))
-                group_id = cursor.fetchone()[0]  # Получаем ID новой группы
-            else:
-                group_id = group_row[0]  # Получаем ID существующей группы
-
-            insert_student_query = sql.SQL(
-                "INSERT INTO students (user_id, first_name, last_name, middle_name, group_id) VALUES (%s, %s, %s, %s, %s)")
-            cursor.execute(insert_student_query, (user_id, first_name, last_name, middle_name, group_id))
-
-            update_user_query = sql.SQL("UPDATE users SET position = %s WHERE id = %s")
-            cursor.execute(update_user_query, ("Студент", user_id))
-
-        elif position == "Преподаватель":
-            insert_teacher_query = sql.SQL(
-                "INSERT INTO teachers (user_id, first_name, last_name, middle_name) VALUES (%s, %s, %s, %s)")
-            cursor.execute(insert_teacher_query, (user_id, first_name, last_name, middle_name))
-
-            update_user_query = sql.SQL("UPDATE users SET position = %s WHERE id = %s")
-            cursor.execute(update_user_query, ("Преподаватель", user_id))
-
-        conn.commit()
-
-        cursor.close()
-        conn.close()
-
-        return True
 
 
 class LoginPage(QtWidgets.QWidget):
@@ -223,12 +189,12 @@ class LoginPage(QtWidgets.QWidget):
         conn = connect_db()
         cursor = conn.cursor()
 
-        query = sql.SQL("SELECT * FROM users WHERE username = %s AND password = %s")
+        query = sql.SQL("SELECT authenticate_user(%s, %s)")
         cursor.execute(query, (username, password))
 
-        user = cursor.fetchone()
+        result = cursor.fetchone()
 
         cursor.close()
         conn.close()
 
-        return user is not None
+        return result[0] if result else False

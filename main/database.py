@@ -1,12 +1,14 @@
 import psycopg2
-from ui.login import DB_NAME, DB_HOST, DB_USER,DB_PASSWORD
+from ui.login import DB_HOST, DB_USER, DB_PASSWORD
+
 
 def create_database(db_name):
-    conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
+    #Подключаемся к стандартной БД postgres на случай, если создаём новую БД, тк надо сначала подключиться к какой-то
+    conn = psycopg2.connect(dbname='postgres', user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
     conn.autocommit = True  # Включаем автокоммит для создания базы данных
     cursor = conn.cursor()
 
-    # Проверяем, существует ли бд
+    # Проверяем, существует ли база данных
     cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
     exists = cursor.fetchone()
 
@@ -19,7 +21,7 @@ def create_database(db_name):
         conn.close()
 
         # Подключаемся к новой базе данных
-        conn = psycopg2.connect(dbname=db_name, user='postgres', password='4339', host='localhost')
+        conn = psycopg2.connect(dbname=db_name, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -75,6 +77,95 @@ def create_database(db_name):
                 teacher_id INTEGER REFERENCES teachers(id),
                 grade INTEGER CHECK (grade >= 0 AND grade <= 10)
             )
+        ''')
+
+        cursor.execute('''
+                    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+                ''')
+
+        cursor.execute('''
+                    CREATE OR REPLACE FUNCTION authenticate_user(
+                        p_username VARCHAR,
+                        p_password VARCHAR
+                    )
+                    RETURNS BOOLEAN AS $$
+                    DECLARE
+                        user_count INT;
+                    BEGIN
+                        SELECT COUNT(*) INTO user_count 
+                        FROM users 
+                        WHERE username = p_username AND password = crypt(p_password, password);
+
+                        RETURN user_count > 0;
+                    END;
+                    $$ LANGUAGE plpgsql;
+                ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION register_user(
+                p_username VARCHAR,
+                p_password VARCHAR,
+                p_first_name VARCHAR,
+                p_last_name VARCHAR,
+                p_middle_name VARCHAR,
+                p_position VARCHAR,
+                p_group VARCHAR
+            )
+            RETURNS BOOLEAN AS $$
+            DECLARE
+                user_id INT;
+                group_id INT;
+            BEGIN
+                -- Проверяем, существует ли пользователь
+                IF check_user_exists(p_username) THEN
+                    RETURN FALSE;
+                END IF;
+
+                INSERT INTO users (username, password) VALUES (p_username, crypt(p_password, gen_salt('bf')))
+                RETURNING id INTO user_id;
+
+                IF p_position = 'Студент' THEN
+                    -- Проверяем, существует ли группа
+                    SELECT id INTO group_id FROM groups_name WHERE group_name = p_group;
+
+                    IF group_id IS NULL THEN
+                        INSERT INTO groups_name (group_name) VALUES (p_group)
+                        RETURNING id INTO group_id;  -- Получаем ID новой группы
+                    END IF;
+
+                    -- Вставка студента с использованием ID группы
+                    INSERT INTO students (user_id, first_name, last_name, middle_name, group_id)
+                    VALUES (user_id, p_first_name, p_last_name, p_middle_name, group_id);
+
+                    UPDATE users SET position = 'Студент' WHERE id = user_id;
+
+                ELSIF p_position = 'Преподаватель' THEN
+                    INSERT INTO teachers (user_id, first_name, last_name, middle_name)
+                    VALUES (user_id, p_first_name, p_last_name, p_middle_name);
+
+                    UPDATE users SET position = 'Преподаватель' WHERE id = user_id;
+                END IF;
+
+                RETURN TRUE;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION check_user_exists(
+                p_username VARCHAR
+            )
+            RETURNS BOOLEAN AS $$
+            DECLARE
+                user_count INT;
+            BEGIN
+                SELECT COUNT(*) INTO user_count 
+                FROM users 
+                WHERE username = p_username;
+
+                RETURN user_count > 0;
+            END;
+            $$ LANGUAGE plpgsql;
         ''')
 
         conn.commit()
