@@ -1,8 +1,8 @@
 import psycopg2
-
+from ui.login import DB_NAME, DB_HOST, DB_USER,DB_PASSWORD
 
 def create_database(db_name):
-    conn = psycopg2.connect(dbname='postgres', user='postgres', password='4339', host='localhost')
+    conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
     conn.autocommit = True  # Включаем автокоммит для создания базы данных
     cursor = conn.cursor()
 
