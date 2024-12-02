@@ -1,10 +1,9 @@
 from PyQt5 import QtWidgets
-from psycopg2 import sql
 import psycopg2
-
+from main.ui.profile import StudentProfile, TeacherProfile
 from dotenv import load_dotenv
 import os
-
+import bcrypt
 
 load_dotenv()
 
@@ -111,7 +110,7 @@ class RegistrationPage(QtWidgets.QWidget):
 
         if self.register_user(username, password, first_name, last_name, middle_name, position, group):
             QtWidgets.QMessageBox.information(self, "Успех", "Регистрация прошла успешно!")
-            self.close()  # Закрыть окно после успешной регистрации
+            self.close()
         else:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Регистрация не удалась или пользователь уже существует!")
 
@@ -121,7 +120,7 @@ class RegistrationPage(QtWidgets.QWidget):
 
         try:
             cursor.execute(
-                "SELECT register_user(%s, %s, %s, %s, %s, %s, %s)", #TODO подумать над паролем, сейчас он через бд
+                "SELECT register_user(%s, %s, %s, %s, %s, %s, %s)",
                 (username, password, first_name, last_name, middle_name, position, group)
             )
 
@@ -142,6 +141,7 @@ class LoginPage(QtWidgets.QWidget):
     """
     Вход в существующий профиль или переход на страницу регистрации.
     """
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Login')
@@ -176,25 +176,98 @@ class LoginPage(QtWidgets.QWidget):
         username = self.username_input.text()
         password = self.password_input.text()
 
-        if self.authenticate_user(username, password):
-            QtWidgets.QMessageBox.information(self, "Успех", "Вход выполнен успешно!")
+        user_info = self.authenticate_user(username, password)
+
+        if user_info:
+            first_name = user_info['first_name']
+            last_name = user_info['last_name']
+            middle_name = user_info['middle_name']
+            position = user_info['position']
+            self.open_user_profile(first_name, last_name, middle_name, position)
         else:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Ошибка входа!")
+
+    def open_user_profile(self, first_name, last_name, middle_name, position):
+        if position == "Студент":
+            self.profile_window = StudentProfile(first_name, last_name, middle_name)
+            self.profile_window.show()
+            self.close()
+        else:
+            self.profile_window = TeacherProfile(first_name, last_name, middle_name)
+            self.profile_window.show()
+            self.close()
 
     def open_registration_page(self):
         self.registration_page = RegistrationPage()
         self.registration_page.show()
 
     def authenticate_user(self, username, password):
-        conn = connect_db()
-        cursor = conn.cursor()
+        conn = None
+        cursor = None
+        try:
+            conn = connect_db()
+            cursor = conn.cursor()
 
-        query = sql.SQL("SELECT authenticate_user(%s, %s)")
-        cursor.execute(query, (username, password))
+            user_query = "SELECT id, position, password FROM users WHERE username = %s"
+            cursor.execute(user_query, (username,))
+            user_info = cursor.fetchone()
 
-        result = cursor.fetchone()
+            if user_info:
+                user_id, position, stored_password = user_info
+                if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+                    if position == 'Студент':
+                        query = """
+                           SELECT u.id, s.first_name, s.last_name, s.middle_name 
+                           FROM users u
+                           JOIN students s ON u.id = s.user_id
+                           WHERE u.id = %s
+                           """
+                        cursor.execute(query, (user_id,))
+                        student_info = cursor.fetchone()
+                        if student_info:
+                            return {
+                                'id': user_id,
+                                'first_name': student_info[1],
+                                'last_name': student_info[2],
+                                'middle_name': student_info[3],
+                                'position': position
+                            }
+                        else:
+                            print("Информация о студенте не найдена.")
+                            return None
 
-        cursor.close()
-        conn.close()
+                    elif position == 'Преподаватель':
+                        query = """
+                           SELECT u.id, t.first_name, t.last_name, t.middle_name 
+                           FROM users u
+                           JOIN teachers t ON u.id = t.user_id
+                           WHERE u.id = %s
+                           """
+                        cursor.execute(query, (user_id,))
+                        teacher_info = cursor.fetchone()
+                        if teacher_info:
+                            return {
+                                'id': user_id,
+                                'first_name': teacher_info[1],
+                                'last_name': teacher_info[2],
+                                'middle_name': teacher_info[3],
+                                'position': position
+                            }
+                        else:
+                            print("Информация о преподавателе не найдена.")
+                            return None
+                else:
+                    print("Неверный пароль!")
+                    return None
+            else:
+                print("Пользователь не найден!")
+                return None
 
-        return result[0] if result else False
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
