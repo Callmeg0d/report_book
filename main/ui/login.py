@@ -183,19 +183,23 @@ class LoginPage(QtWidgets.QWidget):
             last_name = user_info['last_name']
             middle_name = user_info['middle_name']
             position = user_info['position']
-            self.open_user_profile(first_name, last_name, middle_name, position)
+            if position == "Преподаватель":
+                inner_id = user_info['teacher_id']
+                self.open_teacher_profile(first_name, last_name, middle_name, inner_id)
+            else:
+                self.open_student_profile(first_name, last_name, middle_name)
         else:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Ошибка входа!")
 
-    def open_user_profile(self, first_name, last_name, middle_name, position):
-        if position == "Студент":
-            self.profile_window = StudentProfile(first_name, last_name, middle_name)
-            self.profile_window.show()
-            self.close()
-        else:
-            self.profile_window = TeacherProfile(first_name, last_name, middle_name)
-            self.profile_window.show()
-            self.close()
+    def open_student_profile(self, first_name, last_name, middle_name):
+        self.profile_window = StudentProfile(first_name, last_name, middle_name)
+        self.profile_window.show()
+        self.close()
+
+    def open_teacher_profile(self, first_name, last_name, middle_name, inner_id):
+        self.profile_window = TeacherProfile(first_name, last_name, middle_name, inner_id)
+        self.profile_window.show()
+        self.close()
 
     def open_registration_page(self):
         self.registration_page = RegistrationPage()
@@ -217,7 +221,7 @@ class LoginPage(QtWidgets.QWidget):
                 if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
                     if position == 'Студент':
                         query = """
-                           SELECT u.id, s.first_name, s.last_name, s.middle_name 
+                           SELECT u.id, s.first_name, s.last_name, s.middle_name
                            FROM users u
                            JOIN students s ON u.id = s.user_id
                            WHERE u.id = %s
@@ -230,7 +234,7 @@ class LoginPage(QtWidgets.QWidget):
                                 'first_name': student_info[1],
                                 'last_name': student_info[2],
                                 'middle_name': student_info[3],
-                                'position': position
+                                'position': position,
                             }
                         else:
                             print("Информация о студенте не найдена.")
@@ -238,7 +242,7 @@ class LoginPage(QtWidgets.QWidget):
 
                     elif position == 'Преподаватель':
                         query = """
-                           SELECT u.id, t.first_name, t.last_name, t.middle_name 
+                           SELECT u.id, t.first_name, t.last_name, t.middle_name, t.id 
                            FROM users u
                            JOIN teachers t ON u.id = t.user_id
                            WHERE u.id = %s
@@ -251,7 +255,8 @@ class LoginPage(QtWidgets.QWidget):
                                 'first_name': teacher_info[1],
                                 'last_name': teacher_info[2],
                                 'middle_name': teacher_info[3],
-                                'position': position
+                                'position': position,
+                                'teacher_id': teacher_info[4]
                             }
                         else:
                             print("Информация о преподавателе не найдена.")
