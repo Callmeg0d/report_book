@@ -57,7 +57,8 @@ def create_database(db_name):
                 first_name VARCHAR(50) NOT NULL,
                 last_name VARCHAR(50) NOT NULL,
                 middle_name VARCHAR(50),
-                group_id INTEGER REFERENCES groups_name(id)
+                group_id INTEGER REFERENCES groups_name(id),
+                average_grade NUMERIC
             )
         ''')
 
@@ -166,6 +167,32 @@ def create_database(db_name):
                 RETURN user_count > 0;
             END;
             $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            -- Создание функции для обновления средней оценки
+            CREATE OR REPLACE FUNCTION update_average_grade() 
+            RETURNS TRIGGER AS $$
+            BEGIN
+                UPDATE students 
+                SET average_grade = (
+                    SELECT AVG(grade) 
+                    FROM grades 
+                    WHERE student_id = NEW.student_id
+                )
+                WHERE id = NEW.student_id;
+
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            -- Создание триггера на добавление записей в grades
+            CREATE TRIGGER trigger_update_average_grade
+            AFTER INSERT ON grades
+            FOR EACH ROW
+            EXECUTE FUNCTION update_average_grade();
         ''')
 
         conn.commit()
