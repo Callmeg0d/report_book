@@ -190,12 +190,15 @@ class TeacherProfile(QtWidgets.QWidget):
 
         self.table_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
-        #self.table_widget.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-
         row_height = self.table_widget.rowHeight(0)
         self.table_widget.setFixedHeight(row_height * min(num_rows, 10))
 
         layout.addWidget(self.table_widget)
+
+        # Кнопка для обновления оценок
+        self.save_button = QtWidgets.QPushButton("Обновить оценки", self)
+        self.save_button.clicked.connect(self.save_grades)
+        layout.addWidget(self.save_button)
 
         layout.addStretch(6)
 
@@ -241,6 +244,49 @@ class TeacherProfile(QtWidgets.QWidget):
             return subjects_info
         else:
             return []
+
+    def save_grades(self):
+        try:
+            conn = psycopg2.connect(
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST
+            )
+            cursor = conn.cursor()
+
+            for row_index in range(self.table_widget.rowCount()):
+                subject_name = self.table_widget.item(row_index, 0).text()
+                new_grade = int(self.table_widget.item(row_index, 1).text())
+                student_full_name = self.table_widget.item(row_index, 2).text()
+
+                student_id_query = """
+                    SELECT id FROM students WHERE CONCAT(first_name, ' ', last_name, ' ', middle_name) = %s
+                """
+                cursor.execute(student_id_query, (student_full_name,))
+                student_id_result = cursor.fetchone()
+
+                if student_id_result is not None:
+                    student_id = student_id_result[0]
+
+                    update_query = """
+                        UPDATE grades
+                        SET grade = %s
+                        WHERE subject_id = (SELECT id FROM subjects WHERE name = %s) AND student_id = %s
+                    """
+                    cursor.execute(update_query, (new_grade, subject_name, student_id))
+
+            conn.commit()
+            print("Оценки успешно обновлены.")
+
+        except Exception as e:
+            print("Ошибка при обновлении оценок:", e)
+
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
 
 class GradeForm(QtWidgets.QWidget):
