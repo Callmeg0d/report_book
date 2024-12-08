@@ -187,12 +187,13 @@ class LoginPage(QtWidgets.QWidget):
                 inner_id = user_info['teacher_id']
                 self.open_teacher_profile(first_name, last_name, middle_name, inner_id)
             else:
-                self.open_student_profile(first_name, last_name, middle_name)
+                student_id = user_info['student_id']
+                self.open_student_profile(first_name, last_name, middle_name, student_id)
         else:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Ошибка входа!")
 
-    def open_student_profile(self, first_name, last_name, middle_name):
-        self.profile_window = StudentProfile(first_name, last_name, middle_name)
+    def open_student_profile(self, first_name, last_name, middle_name, student_id):
+        self.profile_window = StudentProfile(first_name, last_name, middle_name, student_id)
         self.profile_window.show()
         self.close()
 
@@ -221,7 +222,7 @@ class LoginPage(QtWidgets.QWidget):
                 if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
                     if position == 'Студент':
                         query = """
-                           SELECT u.id, s.first_name, s.last_name, s.middle_name
+                           SELECT u.id, s.first_name, s.last_name, s.middle_name, s.id
                            FROM users u
                            JOIN students s ON u.id = s.user_id
                            WHERE u.id = %s
@@ -230,11 +231,12 @@ class LoginPage(QtWidgets.QWidget):
                         student_info = cursor.fetchone()
                         if student_info:
                             return {
-                                'id': user_id,
+                                'user_id': user_id,
                                 'first_name': student_info[1],
                                 'last_name': student_info[2],
                                 'middle_name': student_info[3],
                                 'position': position,
+                                'student_id': student_info[4]
                             }
                         else:
                             print("Информация о студенте не найдена.")
@@ -251,7 +253,7 @@ class LoginPage(QtWidgets.QWidget):
                         teacher_info = cursor.fetchone()
                         if teacher_info:
                             return {
-                                'id': user_id,
+                                'user_id': user_id,
                                 'first_name': teacher_info[1],
                                 'last_name': teacher_info[2],
                                 'middle_name': teacher_info[3],
