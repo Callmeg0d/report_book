@@ -25,11 +25,9 @@ class StudentProfile(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout()
 
-        # Создаем центральный виджет для выравнивания
         central_widget = QtWidgets.QWidget()
         central_layout = QtWidgets.QVBoxLayout(central_widget)
 
-        # Добавляем отступы
         central_layout.addStretch(1)
 
         self.name_label = QtWidgets.QLabel(f"Пользователь: {first_name} {last_name} {middle_name}")
@@ -50,7 +48,7 @@ class StudentProfile(QtWidgets.QWidget):
 
         # Создаем таблицу для отображения оценок
         self.table_widget = QtWidgets.QTableWidget()
-        # Устанавливаем количество строк и столбцов
+
         num_rows = len(subjects_info)
         self.table_widget.setRowCount(num_rows)
         self.table_widget.setColumnCount(3)
@@ -91,7 +89,7 @@ class StudentProfile(QtWidgets.QWidget):
 
         central_layout.addStretch(6)
 
-        layout.addWidget(central_widget)  # Добавляем центральный виджет в основной layout
+        layout.addWidget(central_widget)
         self.setLayout(layout)
 
     def get_student_info(self, student_id):
@@ -143,8 +141,9 @@ class TeacherProfile(QtWidgets.QWidget):
 
     def __init__(self, first_name, last_name, middle_name, teacher_id):
         super().__init__()
+
         self.setWindowTitle("Профиль преподавателя")
-        self.setGeometry(750, 400, 500, 350)
+        self.setGeometry(500, 200, 1000, 700)
 
         layout = QtWidgets.QVBoxLayout()
 
@@ -158,13 +157,90 @@ class TeacherProfile(QtWidgets.QWidget):
         self.grade_button.clicked.connect(lambda: self.open_grade_form(teacher_id))
         layout.addWidget(self.grade_button)
 
-        layout.addStretch(7)
+        layout.addStretch(1)
+
+        self.table_widget = QtWidgets.QTableWidget()
+
+        grades_info = self.get_grades_for_teacher(teacher_id)  # Получаем оценки для преподавателя
+
+        num_rows = len(grades_info)
+        self.table_widget.setRowCount(num_rows)
+        self.table_widget.setColumnCount(3)
+
+        self.table_widget.setHorizontalHeaderLabels(["Предмет", "Оценка", "Cтудент"])
+
+        for row_index, (subject_name, grade, student_full_name) in enumerate(grades_info):
+            subject_item = QtWidgets.QTableWidgetItem(subject_name)
+            subject_item.setTextAlignment(QtCore.Qt.AlignCenter)
+            self.table_widget.setItem(row_index, 0, subject_item)
+
+            grade_item = QtWidgets.QTableWidgetItem(str(grade))
+            grade_item.setTextAlignment(QtCore.Qt.AlignCenter)
+            self.table_widget.setItem(row_index, 1, grade_item)
+
+            student_item = QtWidgets.QTableWidgetItem(student_full_name)
+            student_item.setTextAlignment(QtCore.Qt.AlignCenter)
+            self.table_widget.setItem(row_index, 2, student_item)
+
+        self.table_widget.setColumnWidth(0, 300)
+        self.table_widget.setColumnWidth(1, 100)
+        self.table_widget.setColumnWidth(2, 150)
+
+        self.table_widget.horizontalHeader().setStretchLastSection(True)
+
+        self.table_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
+        #self.table_widget.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        row_height = self.table_widget.rowHeight(0)
+        self.table_widget.setFixedHeight(row_height * min(num_rows, 10))
+
+        layout.addWidget(self.table_widget)
+
+        layout.addStretch(6)
 
         self.setLayout(layout)
 
     def open_grade_form(self, teacher_id):
         self.grade_form = GradeForm(teacher_id)
         self.grade_form.show()
+
+    def get_grades_for_teacher(self, teacher_id):
+        try:
+            conn = psycopg2.connect(
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST
+            )
+            cursor = conn.cursor()
+
+            query = """
+                SELECT sub.name AS subject_name, gr.grade, 
+                       s.first_name, s.last_name, s.middle_name
+                FROM grades gr
+                JOIN subjects sub ON gr.subject_id = sub.id
+                JOIN students s ON gr.student_id = s.id
+                WHERE gr.teacher_id = %s
+            """
+
+            cursor.execute(query, (teacher_id,))
+            results = cursor.fetchall()
+            cursor.close()
+
+        except Exception as e:
+            print("Ошибка при подключении к базе данных:", e)
+            return [], []
+
+        finally:
+            if conn:
+                conn.close()
+
+        if results:
+            subjects_info = [(row[0], row[1], f"{row[2]} {row[3]} {row[4]}") for row in results]
+            return subjects_info
+        else:
+            return []
 
 
 class GradeForm(QtWidgets.QWidget):
@@ -255,3 +331,4 @@ class GradeForm(QtWidgets.QWidget):
                 cursor.close()
             if conn:
                 conn.close()
+
