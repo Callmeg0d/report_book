@@ -170,6 +170,127 @@ def create_database(db_name):
         ''')
 
         cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_user_info(
+                p_username VARCHAR
+            )
+            RETURNS TABLE(id INT, "position" VARCHAR, password VARCHAR) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT id, u."position", password
+                FROM users
+                WHERE username = p_username;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_student_info(
+                p_user_id INT
+            )
+            RETURNS TABLE(id INT, first_name VARCHAR, last_name VARCHAR, middle_name VARCHAR, student_id INT) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT u.id, s.first_name, s.last_name, s.middle_name, s.id
+                FROM users u
+                JOIN students s ON u.id = s.user_id
+                WHERE u.id = p_user_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_teacher_info(
+                p_user_id INT
+            )
+            RETURNS TABLE(id INT, first_name VARCHAR, last_name VARCHAR, middle_name VARCHAR, teacher_id INT) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT u.id, t.first_name, t.last_name, t.middle_name, t.id 
+                FROM users u
+                JOIN teachers t ON u.id = t.user_id
+                WHERE u.id = p_user_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_student_info_for_grades(
+                p_student_id INT
+            )
+            RETURNS TABLE(
+                group_name VARCHAR,
+                average_grade NUMERIC,
+                subject_name VARCHAR,
+                grade NUMERIC,
+                first_name VARCHAR,
+                last_name VARCHAR,
+                middle_name VARCHAR
+            ) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT g.group_name, 
+                       s.average_grade, 
+                       sub.name AS subject_name, 
+                       gr.grade, 
+                       t.first_name, 
+                       t.last_name, 
+                       t.middle_name
+                FROM students s
+                JOIN groups_name g ON s.group_id = g.id
+                LEFT JOIN grades gr ON s.id = gr.student_id
+                LEFT JOIN subjects sub ON gr.subject_id = sub.id
+                LEFT JOIN teachers t ON gr.teacher_id = t.id
+                WHERE s.id = p_student_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_student_grades_by_teacher(teacher_id INT)
+            RETURNS TABLE(subject_name VARCHAR(50), grade INT, first_name VARCHAR(50), last_name VARCHAR(50), middle_name VARCHAR(50)) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT sub.name::VARCHAR(50) AS subject_name, gr.grade, 
+                       s.first_name, s.last_name, s.middle_name
+                FROM grades gr
+                JOIN subjects sub ON gr.subject_id = sub.id
+                JOIN students s ON gr.student_id = s.id
+                WHERE gr.teacher_id = $1;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_student_id_by_full_name(full_name TEXT)
+            RETURNS INT AS $$
+            DECLARE
+                student_id INT;
+            BEGIN
+                SELECT id INTO student_id
+                FROM students
+                WHERE CONCAT(first_name, ' ', last_name, ' ', middle_name) = full_name;
+            
+                RETURN student_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION update_student_grade(
+            subject_name TEXT,
+            student_id_param INT,
+            new_grade INT
+        ) RETURNS VOID AS $$
+        BEGIN
+            UPDATE grades
+            SET grade = new_grade
+            WHERE subject_id = (SELECT id FROM subjects WHERE name = subject_name)
+              AND student_id = student_id_param;
+        END;
+        $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
             -- Создание функции для обновления средней оценки
             CREATE OR REPLACE FUNCTION update_average_grade() 
             RETURNS TRIGGER AS $$
@@ -193,6 +314,79 @@ def create_database(db_name):
             AFTER INSERT ON grades
             FOR EACH ROW
             EXECUTE FUNCTION update_average_grade();
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_student_id(
+                first_name VARCHAR(50),
+                last_name VARCHAR(50),
+                group_name VARCHAR(50)
+            ) RETURNS INT AS $$
+            DECLARE
+                student_id INT;
+            BEGIN
+                SELECT id INTO student_id
+                FROM students
+                WHERE first_name = first_name
+                  AND last_name = last_name
+                  AND group_id = (SELECT id FROM groups_name WHERE group_name = group_name);
+            
+                RETURN student_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION insert_subject(
+                p_name TEXT,
+                p_teacher_id INT
+            ) RETURNS INT AS $$
+            DECLARE
+                new_subject_id INT;
+            BEGIN
+                INSERT INTO subjects (name, teacher_id)
+                VALUES (p_name, p_teacher_id)
+                RETURNING id INTO new_subject_id;
+            
+                RETURN new_subject_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION insert_grade(
+                p_student_id INT,
+                p_subject_id INT,
+                p_teacher_id INT,
+                p_grade INT
+            ) RETURNS INT AS $$
+            DECLARE
+                new_grade_id INT;
+            BEGIN
+                INSERT INTO grades (student_id, subject_id, teacher_id, grade)
+                VALUES (p_student_id, p_subject_id, p_teacher_id, p_grade)
+                RETURNING id INTO new_grade_id;
+            
+                RETURN new_grade_id;
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_subject_id(
+                p_subject_name TEXT,
+                p_teacher_id INT
+            ) RETURNS INT AS $$
+            DECLARE
+                subject_id INT;
+            BEGIN
+                SELECT id INTO subject_id
+                FROM subjects
+                WHERE name = p_subject_name AND teacher_id = p_teacher_id;
+            
+                RETURN subject_id;
+            END;
+            $$ LANGUAGE plpgsql;
         ''')
 
         conn.commit()
