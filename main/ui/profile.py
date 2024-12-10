@@ -102,16 +102,7 @@ class StudentProfile(QtWidgets.QWidget):
             )
             cursor = conn.cursor()
 
-            query = """
-                SELECT g.group_name, s.average_grade, sub.name AS subject_name, 
-                       gr.grade, t.first_name, t.last_name, t.middle_name
-                FROM students s
-                JOIN groups_name g ON s.group_id = g.id
-                LEFT JOIN grades gr ON s.id = gr.student_id
-                LEFT JOIN subjects sub ON gr.subject_id = sub.id
-                LEFT JOIN teachers t ON gr.teacher_id = t.id
-                WHERE s.id = %s
-            """
+            query = "SELECT * FROM get_student_info_for_grades(%s)"
 
             cursor.execute(query, (student_id,))
             results = cursor.fetchall()
@@ -136,7 +127,7 @@ class StudentProfile(QtWidgets.QWidget):
 
 class TeacherProfile(QtWidgets.QWidget):
     """
-    Интерфес преподавателя с правами вносить оценку студентам
+    Интерфейс преподавателя с правами вносить оценку студентам
     """
 
     def __init__(self, first_name, last_name, middle_name, teacher_id):
@@ -159,15 +150,41 @@ class TeacherProfile(QtWidgets.QWidget):
 
         layout.addStretch(1)
 
+        self.name_label = QtWidgets.QLabel(f"Поиск студентов по фамилии")
+        self.name_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(self.name_label)
+
+        self.search_input = QtWidgets.QLineEdit(self)
+        self.search_input.setPlaceholderText("Введите фамилию студента")
+        layout.addWidget(self.search_input)
+
+        self.search_button = QtWidgets.QPushButton("Поиск", self)
+        self.search_button.clicked.connect(self.search_student)
+        layout.addWidget(self.search_button)
+
+        # Таблица для отображения оценок
         self.table_widget = QtWidgets.QTableWidget()
 
-        grades_info = self.get_grades_for_teacher(teacher_id)  # Получаем оценки для преподавателя
+        self.grades_info = self.get_grades_for_teacher(teacher_id)  # Получаем оценки для преподавателя
+        self.insert_data_in_table(self.grades_info)  # Заполняем таблицу начальными данными
 
+        layout.addWidget(self.table_widget)
+
+        self.save_button = QtWidgets.QPushButton("Обновить оценки", self)
+        self.save_button.clicked.connect(self.save_grades)
+        layout.addWidget(self.save_button)
+
+        layout.addStretch(6)
+
+        self.setLayout(layout)
+
+    def insert_data_in_table(self, grades_info):
+        """Заполняет таблицу данными оценок."""
         num_rows = len(grades_info)
         self.table_widget.setRowCount(num_rows)
         self.table_widget.setColumnCount(3)
 
-        self.table_widget.setHorizontalHeaderLabels(["Предмет", "Оценка", "Cтудент"])
+        self.table_widget.setHorizontalHeaderLabels(["Предмет", "Оценка", "Студент"])
 
         for row_index, (subject_name, grade, student_full_name) in enumerate(grades_info):
             subject_item = QtWidgets.QTableWidgetItem(subject_name)
@@ -186,23 +203,34 @@ class TeacherProfile(QtWidgets.QWidget):
         self.table_widget.setColumnWidth(1, 100)
         self.table_widget.setColumnWidth(2, 150)
 
-        self.table_widget.horizontalHeader().setStretchLastSection(True)
+        # Растягиваем последний столбец
+        header = self.table_widget.horizontalHeader()
+        header.setStretchLastSection(True)
 
-        self.table_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+    def search_student(self):
+        """Ищет студентов по фамилии и обновляет таблицу."""
+        surname = self.search_input.text().strip()
 
-        row_height = self.table_widget.rowHeight(0)
-        self.table_widget.setFixedHeight(row_height * min(num_rows, 10))
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST
+        )
+        cursor = conn.cursor()
+        query = "SELECT * FROM get_student_grades(%s)"
 
-        layout.addWidget(self.table_widget)
+        cursor.execute(query, (surname,))
+        results = cursor.fetchall()
 
-        # Кнопка для обновления оценок
-        self.save_button = QtWidgets.QPushButton("Обновить оценки", self)
-        self.save_button.clicked.connect(self.save_grades)
-        layout.addWidget(self.save_button)
+        cursor.close()
+        conn.close()
 
-        layout.addStretch(6)
+        if results:
+            self.insert_data_in_table(results)
+        else:
+            QtWidgets.QMessageBox.information(self, "Результат поиска", "Студент не найден.")
 
-        self.setLayout(layout)
 
     def open_grade_form(self, teacher_id):
         self.grade_form = GradeForm(teacher_id)
@@ -218,14 +246,7 @@ class TeacherProfile(QtWidgets.QWidget):
             )
             cursor = conn.cursor()
 
-            query = """
-                SELECT sub.name AS subject_name, gr.grade, 
-                       s.first_name, s.last_name, s.middle_name
-                FROM grades gr
-                JOIN subjects sub ON gr.subject_id = sub.id
-                JOIN students s ON gr.student_id = s.id
-                WHERE gr.teacher_id = %s
-            """
+            query = "SELECT * FROM get_student_grades_by_teacher(%s)"
 
             cursor.execute(query, (teacher_id,))
             results = cursor.fetchall()
@@ -260,21 +281,15 @@ class TeacherProfile(QtWidgets.QWidget):
                 new_grade = int(self.table_widget.item(row_index, 1).text())
                 student_full_name = self.table_widget.item(row_index, 2).text()
 
-                student_id_query = """
-                    SELECT id FROM students WHERE CONCAT(first_name, ' ', last_name, ' ', middle_name) = %s
-                """
+                student_id_query = "SELECT * FROM get_student_id_by_full_name(%s)"
                 cursor.execute(student_id_query, (student_full_name,))
                 student_id_result = cursor.fetchone()
 
                 if student_id_result is not None:
                     student_id = student_id_result[0]
 
-                    update_query = """
-                        UPDATE grades
-                        SET grade = %s
-                        WHERE subject_id = (SELECT id FROM subjects WHERE name = %s) AND student_id = %s
-                    """
-                    cursor.execute(update_query, (new_grade, subject_name, student_id))
+                    update_query = "SELECT * FROM update_student_grade(%s, %s, %s)"
+                    cursor.execute(update_query, (subject_name, student_id, new_grade))
 
             conn.commit()
             print("Оценки успешно обновлены.")
@@ -341,26 +356,26 @@ class GradeForm(QtWidgets.QWidget):
 
             # Получаем id студента
             cursor.execute(
-                "SELECT id FROM students WHERE first_name=%s AND last_name=%s AND group_id=(SELECT id FROM groups_name WHERE group_name=%s)",
+                "SELECT * FROM get_student_id(%s, %s, %s)",
                 (first_name, last_name, group_name))
             student_id_result = cursor.fetchone()
             if student_id_result:
                 student_id = student_id_result[0]
 
                 # Проверяем наличие предмета
-                cursor.execute("SELECT id FROM subjects WHERE name=%s AND teacher_id=%s",
+                cursor.execute("SELECT * FROM get_subject_id(%s, %s)",
                                (subject_name, self.teacher_id))
                 subject_id_result = cursor.fetchone()
 
-                if subject_id_result:
+                if subject_id_result and subject_id_result[0] is not None:
                     subject_id = subject_id_result[0]
                 else:
-                    cursor.execute("INSERT INTO subjects (name, teacher_id) VALUES (%s, %s) RETURNING id",
+                    cursor.execute("SELECT insert_subject(%s, %s)",
                                    (subject_name, self.teacher_id))
                     subject_id = cursor.fetchone()[0]
                     conn.commit()
 
-                cursor.execute("INSERT INTO grades (student_id, subject_id, teacher_id, grade) VALUES (%s, %s, %s, %s)",
+                cursor.execute("SELECT insert_grade(%s, %s, %s, %s)",
                                (student_id, subject_id, self.teacher_id, grade))
                 conn.commit()
                 QtWidgets.QMessageBox.information(self, "Успех", "Оценка успешно выставлена!")
