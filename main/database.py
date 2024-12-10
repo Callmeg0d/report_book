@@ -389,6 +389,27 @@ def create_database(db_name):
             $$ LANGUAGE plpgsql;
         ''')
 
+        cursor.execute('''
+            CREATE OR REPLACE FUNCTION get_student_grades(last_name_pattern TEXT)
+            RETURNS TABLE(subject_name VARCHAR(50), grade INT, student_full_name TEXT) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT 
+                    sub.name AS subject_name,
+                    g.grade,
+                    s.first_name || ' ' || s.last_name || ' ' || s.middle_name AS student_full_name
+                FROM 
+                    grades g
+                JOIN 
+                    students s ON g.student_id = s.id
+                JOIN 
+                    subjects sub ON g.subject_id = sub.id
+                WHERE 
+                    LOWER(s.last_name) LIKE LOWER('%' || last_name_pattern || '%');
+            END;
+            $$ LANGUAGE plpgsql;
+        ''')
+
         conn.commit()
         conn.close()
     else:
