@@ -386,6 +386,14 @@ WHERE
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION record_exist(student_id INT, subject_id INT)
+RETURNS SETOF grades AS $$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM grades WHERE student_id = student_id AND subject_id = subject_id;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION get_grade(p_student_id INT, p_subject_id INT)
    RETURNS TABLE(grade INT) AS $$
    BEGIN
