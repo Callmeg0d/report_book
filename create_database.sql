@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS grades (
     student_id INTEGER REFERENCES students(id),
     subject_id INTEGER REFERENCES subjects(id),
     teacher_id INTEGER REFERENCES teachers(id),
-    grade INTEGER CHECK (grade >= 0 AND grade <= 10),
+    grade INTEGER,
     UNIQUE (student_id, subject_id)
 );
 
@@ -233,20 +233,32 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION update_average_grade()
 RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE students
-    SET average_grade = ROUND((
-        SELECT AVG(grade)
-        FROM grades
-        WHERE student_id = NEW.student_id
-    ), 2)
-    WHERE id = NEW.student_id;
+    -- Устанавливаем student_id, в зависимости от операции
+    DECLARE
+        target_student_id INT;
+    BEGIN
+        IF TG_OP = 'DELETE' THEN
+            target_student_id := OLD.student_id;
+        ELSE
+            target_student_id := NEW.student_id;
+        END IF;
 
-    RETURN NEW;
+        -- Обновляем средний балл для студента
+        UPDATE students
+        SET average_grade = COALESCE(ROUND((
+            SELECT AVG(grade)
+            FROM grades
+            WHERE student_id = target_student_id
+        ), 2), NULL)
+        WHERE id = target_student_id;
+
+        RETURN NULL;
+    END;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_update_average_grade
-AFTER INSERT ON grades
+AFTER INSERT OR DELETE OR UPDATE ON grades
 FOR EACH ROW
 EXECUTE FUNCTION update_average_grade();
 
@@ -265,6 +277,46 @@ BEGIN
       AND group_id = (SELECT id FROM groups_name WHERE group_name = p_group_name);
 
     RETURN student_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_student_id_by_name(
+    p_first_name TEXT,
+    p_last_name TEXT,
+    p_middle_name TEXT
+)
+RETURNS INTEGER AS $$
+DECLARE
+  v_student_id INTEGER;
+BEGIN
+  SELECT id INTO v_student_id FROM students
+  WHERE first_name = p_first_name AND last_name = p_last_name AND middle_name = p_middle_name;
+  RETURN v_student_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_subject_id_by_name(p_subject_name TEXT)
+RETURNS INT AS $$
+DECLARE
+    v_subject_id INT;
+BEGIN
+    SELECT id INTO v_subject_id
+    FROM subjects
+    WHERE name = p_subject_name;
+
+    -- Возвращаем найденный id или NULL
+    RETURN v_subject_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION delete_grade(p_student_id INT, p_teacher_id INT, p_subject_id INT)
+RETURNS VOID AS $$
+BEGIN
+    DELETE FROM grades
+    WHERE student_id = p_student_id AND teacher_id = p_teacher_id AND subject_id = p_subject_id;
+
+    DELETE FROM subjects
+    WHERE id NOT IN (SELECT DISTINCT subject_id FROM grades);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -333,3 +385,13 @@ WHERE
     LOWER(s.last_name) LIKE LOWER('%' || last_name_pattern || '%');
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_grade(p_student_id INT, p_subject_id INT)
+   RETURNS TABLE(grade INT) AS $$
+   BEGIN
+       RETURN QUERY
+       SELECT g.grade
+       FROM grades g
+       WHERE g.student_id = p_student_id AND g.subject_id = p_subject_id;
+   END;
+   $$ LANGUAGE plpgsql;
