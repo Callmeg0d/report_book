@@ -143,7 +143,7 @@ class TeacherProfile(QtWidgets.QWidget):
 
     def __init__(self, first_name, last_name, middle_name, teacher_id):
         super().__init__()
-
+        self.teacher_id = teacher_id
         self.setWindowTitle("Профиль преподавателя")
         self.setGeometry(470, 200, 1000, 700)
 
@@ -188,7 +188,8 @@ class TeacherProfile(QtWidgets.QWidget):
 
         layout.addWidget(self.table_widget)
 
-        self.name_label = QtWidgets.QLabel("Для удаление записи выберите её, кликнув на её номер в первом столбце, и нажмите кнопку ниже")
+        self.name_label = QtWidgets.QLabel(
+            "Для удаление записи выберите её, кликнув на её номер в первом столбце, и нажмите кнопку ниже")
         self.name_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.name_label)
 
@@ -207,12 +208,17 @@ class TeacherProfile(QtWidgets.QWidget):
         selected_rows = sorted(
             set(index.row() for index in self.table_widget.selectedIndexes()))
         if selected_rows:
+            student_full_name_col = 2
             for row in reversed(selected_rows):
+                full_name = self.table_widget.item(row, student_full_name_col).text()
+                first_name, last_name, middle_name = self.parse_full_name(full_name)
+                subject_name = self.table_widget.item(row, 0).text()
                 self.table_widget.removeRow(row)
-                print(f"Строка {row} удалена.")
+
+                # Выполняем удаление из БД
+                self.delete_grade_from_database(first_name, last_name, middle_name, self.teacher_id, subject_name)
         else:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Выберите строки для удаления.")
-
 
     def insert_data_in_table(self, grades_info):
         """Заполняет таблицу данными оценок."""
@@ -266,7 +272,6 @@ class TeacherProfile(QtWidgets.QWidget):
             self.insert_data_in_table(results)
         else:
             QtWidgets.QMessageBox.information(self, "Результат поиска", "Студент не найден.")
-
 
     def open_grade_form(self, teacher_id):
         self.grade_form = GradeForm(teacher_id)
@@ -339,6 +344,47 @@ class TeacherProfile(QtWidgets.QWidget):
             if conn:
                 conn.close()
 
+    def delete_grade_from_database(self, first_name, last_name, middle_name, teacher_id, subject_name):
+        try:
+            conn = psycopg2.connect(
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST
+            )
+            cursor = conn.cursor()
+            # Получаем student_id на основе ФИО
+            query_student_id = "SELECT get_student_id_by_name(%s, %s, %s)"
+            cursor.execute(query_student_id, (first_name, last_name, middle_name))
+            student_id = cursor.fetchone()
+
+            query_subject_id = "SELECT get_subject_id_by_name(%s)"
+            cursor.execute(query_subject_id, (subject_name,))
+            subject_id = cursor.fetchone()
+
+            if student_id:
+                student_id = student_id[0]
+
+                delete_query = " SELECT delete_grade(%s, %s, %s)"
+                cursor.execute(delete_query, (student_id, teacher_id, subject_id))
+
+            conn.commit()
+
+        except Exception as e:
+            print("Ошибка при удалении записи из базы данных:", e)
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def parse_full_name(self, full_name):
+        """Разделяет полное имя на отдельные компоненты."""
+        parts = full_name.split()
+        if len(parts) == 3:
+            return parts[0], parts[1], parts[2]
+        return parts[0], parts[1], ""  # Если middle_name отсутствует
+
 
 class GradeForm(QtWidgets.QWidget):
     """
@@ -385,6 +431,31 @@ class GradeForm(QtWidgets.QWidget):
         subject_name = self.subject_input.text()
         grade = self.grade_input.text()
 
+        if len(first_name) == 0:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните имя студента!")
+            return
+        if len(last_name) == 0:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните фамилию студента!")
+            return
+        if len(group_name) == 0:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните группу студента!")
+            return
+        if len(subject_name) == 0:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните название предмета!")
+            return
+        if len(grade) == 0:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните поле с оценкой!")
+            return
+        try:
+            grade = int(grade)
+            if grade < 0 or grade > 10:
+                QtWidgets.QMessageBox.warning(self, "Ошибка", "Оценка должна быть от 0 до 10!")
+                return
+
+        except ValueError:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Пожалуйста, введите корректное число для оценки!")
+            return
+
         try:
             conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
             cursor = conn.cursor()
@@ -393,7 +464,7 @@ class GradeForm(QtWidgets.QWidget):
             cursor.execute("SELECT * FROM get_student_id(%s, %s, %s)", (first_name, last_name, group_name))
             student_id_result = cursor.fetchone()
 
-            if student_id_result:
+            if student_id_result != (None,):
                 student_id = student_id_result[0]
 
                 # Проверяем наличие предмета
@@ -413,7 +484,8 @@ class GradeForm(QtWidgets.QWidget):
                 existing_grade = cursor.fetchone()
 
                 if existing_grade:
-                    QtWidgets.QMessageBox.warning(self, "Ошибка", 'Оценка за предмет уже выставлена. Вы можете её изменить.')
+                    QtWidgets.QMessageBox.warning(self, "Ошибка",
+                                                  'Оценка за предмет уже выставлена. Вы можете её изменить.')
                 else:
                     # Вставляем новую оценку
                     cursor.execute("SELECT insert_grade(%s, %s, %s, %s)",
