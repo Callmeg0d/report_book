@@ -35,12 +35,13 @@ CREATE TABLE IF NOT EXISTS subjects (
             );
 
 CREATE TABLE IF NOT EXISTS grades (
-                id SERIAL PRIMARY KEY,
-                student_id INTEGER REFERENCES students(id),
-                subject_id INTEGER REFERENCES subjects(id),
-                teacher_id INTEGER REFERENCES teachers(id),
-                grade INTEGER CHECK (grade >= 0 AND grade <= 10)
-            );
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES students(id),
+    subject_id INTEGER REFERENCES subjects(id),
+    teacher_id INTEGER REFERENCES teachers(id),
+    grade INTEGER CHECK (grade >= 0 AND grade <= 10),
+    UNIQUE (student_id, subject_id)
+);
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -128,9 +129,9 @@ CREATE OR REPLACE FUNCTION get_user_info(
 RETURNS TABLE(id INT, "position" VARCHAR, password VARCHAR) AS $$
 BEGIN
     RETURN QUERY
-    SELECT id, u."position", password
-    FROM users
-    WHERE username = p_username;
+    SELECT u.id, u."position", u.password
+    FROM users u
+    WHERE u.username = p_username;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -167,7 +168,7 @@ RETURNS TABLE(
     group_name VARCHAR,
     average_grade NUMERIC,
     subject_name VARCHAR,
-    grade NUMERIC,
+    grade INTEGER,
     first_name VARCHAR,
     last_name VARCHAR,
     middle_name VARCHAR
@@ -233,11 +234,11 @@ CREATE OR REPLACE FUNCTION update_average_grade()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE students
-    SET average_grade = (
+    SET average_grade = ROUND((
         SELECT AVG(grade)
         FROM grades
         WHERE student_id = NEW.student_id
-    )
+    ), 2)
     WHERE id = NEW.student_id;
 
     RETURN NEW;
@@ -250,18 +251,18 @@ FOR EACH ROW
 EXECUTE FUNCTION update_average_grade();
 
 CREATE OR REPLACE FUNCTION get_student_id(
-                first_name VARCHAR(50),
-                last_name VARCHAR(50),
-                group_name VARCHAR(50)
+                p_first_name VARCHAR(50),
+                p_last_name VARCHAR(50),
+                p_group_name VARCHAR(50)
             ) RETURNS INT AS $$
 DECLARE
     student_id INT;
 BEGIN
     SELECT id INTO student_id
-    FROM students
-    WHERE first_name = first_name
-      AND last_name = last_name
-      AND group_id = (SELECT id FROM groups_name WHERE group_name = group_name);
+    FROM students s
+    WHERE first_name = p_first_name
+      AND last_name = p_last_name
+      AND group_id = (SELECT id FROM groups_name WHERE group_name = p_group_name);
 
     RETURN student_id;
 END;
