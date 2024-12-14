@@ -479,7 +479,7 @@ class GradeForm(QtWidgets.QWidget):
                     conn.commit()
 
                 # Проверяем, существует ли оценка для данного студента и предмета
-                cursor.execute("SELECT * FROM grades WHERE student_id = %s AND subject_id = %s",
+                cursor.execute("SELECT record_exist(%s, %s)",
                                (student_id, subject_id))
                 existing_grade = cursor.fetchone()
 
