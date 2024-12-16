@@ -8,8 +8,8 @@ import bcrypt
 load_dotenv()
 
 DB_NAME = os.getenv('DB_NAME')
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_USER = os.getenv('APP_DB_USER')
+DB_PASSWORD = os.getenv('APP_DB_PASSWORD')
 DB_HOST = os.getenv('DB_HOST')
 
 
@@ -213,7 +213,7 @@ class LoginPage(QtWidgets.QWidget):
             conn = connect_db()
             cursor = conn.cursor()
 
-            user_query = "SELECT id, position, password FROM users WHERE username = %s"
+            user_query = "SELECT * FROM get_user_info(%s)"
             cursor.execute(user_query, (username,))
             user_info = cursor.fetchone()
 
@@ -221,12 +221,7 @@ class LoginPage(QtWidgets.QWidget):
                 user_id, position, stored_password = user_info
                 if bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
                     if position == 'Студент':
-                        query = """
-                           SELECT u.id, s.first_name, s.last_name, s.middle_name, s.id
-                           FROM users u
-                           JOIN students s ON u.id = s.user_id
-                           WHERE u.id = %s
-                           """
+                        query = "SELECT * FROM get_student_info(%s)"
                         cursor.execute(query, (user_id,))
                         student_info = cursor.fetchone()
                         if student_info:
@@ -243,12 +238,7 @@ class LoginPage(QtWidgets.QWidget):
                             return None
 
                     elif position == 'Преподаватель':
-                        query = """
-                           SELECT u.id, t.first_name, t.last_name, t.middle_name, t.id 
-                           FROM users u
-                           JOIN teachers t ON u.id = t.user_id
-                           WHERE u.id = %s
-                           """
+                        query = "SELECT * FROM get_teacher_info(%s)"
                         cursor.execute(query, (user_id,))
                         teacher_info = cursor.fetchone()
                         if teacher_info:
