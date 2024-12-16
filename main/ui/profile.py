@@ -200,7 +200,12 @@ class TeacherProfile(QtWidgets.QWidget):
         self.delete_button.clicked.connect(self.delete_selected_rows)
         layout.addWidget(self.delete_button)
 
-        layout.addStretch(6)
+        layout.addStretch(1)
+
+        self.delete_db_button = QtWidgets.QPushButton("Удалить всю базу данных")
+        self.delete_db_button.setStyleSheet("background-color: red; color: white; font-weight: bold;")
+        self.delete_db_button.clicked.connect(self.delete_database)
+        layout.addWidget(self.delete_db_button)
 
         self.setLayout(layout)
 
@@ -306,6 +311,45 @@ class TeacherProfile(QtWidgets.QWidget):
             return subjects_info
         else:
             return []
+
+    def delete_database(self):
+        """Удаляет всю базу данных, завершив активные подключения, и закрывает приложение."""
+        reply = QtWidgets.QMessageBox.question(
+            self, "Подтверждение удаления",
+            "Вы уверены, что хотите удалить всю базу данных? Это действие необратимо. Приложение будет закрыто.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            try:
+                import psycopg2
+                from main.ui.login import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+
+                conn = psycopg2.connect(
+                    dbname="postgres", user=DB_USER, password=DB_PASSWORD, host=DB_HOST
+                )
+                conn.autocommit = True
+                cursor = conn.cursor()
+
+                # Завершаем все подключения к базе данных
+                cursor.execute(f"""
+                    SELECT pg_terminate_backend(pg_stat_activity.pid)
+                    FROM pg_stat_activity
+                    WHERE pg_stat_activity.datname = '{DB_NAME}' 
+                    AND pid <> pg_backend_pid();
+                """)
+
+                cursor.execute(f"DROP DATABASE {DB_NAME}")
+                QtWidgets.QMessageBox.information(self, "Успех", f"База данных {DB_NAME} была удалена успешно.")
+
+                QtWidgets.QApplication.quit()
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "Ошибка", f"Не удалось удалить базу данных: {e}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
 
     def save_grades(self):
         try:
