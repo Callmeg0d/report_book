@@ -8,8 +8,8 @@ import bcrypt
 load_dotenv()
 
 DB_NAME = os.getenv('DB_NAME')
-DB_USER = os.getenv('APP_DB_USER')
-DB_PASSWORD = os.getenv('APP_DB_PASSWORD')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_HOST = os.getenv('DB_HOST')
 
 
@@ -24,6 +24,7 @@ def connect_db():
 
 
 class RegistrationPage(QtWidgets.QWidget):
+    """Регистрация пользователей"""
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Register')
@@ -82,12 +83,14 @@ class RegistrationPage(QtWidgets.QWidget):
         self.setLayout(self.layout)
 
     def update_group_field(self):
+        """Появление поля с выбором группы, доступного только для студентов"""
         if self.position_combo.currentText() == "Студент":
             self.group_input.setVisible(True)
         else:
             self.group_input.setVisible(False)
 
     def handle_register(self):
+        """Окончание регистрации, проверка валидности данных при регистрации"""
         username = self.username_input.text()
         password = self.password_input.text()
         last_name = self.last_name_input.text()
@@ -115,6 +118,7 @@ class RegistrationPage(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Регистрация не удалась или пользователь уже существует!")
 
     def register_user(self, username, password, first_name, last_name, middle_name, position, group):
+        "Добавляет информацию о зарегистрировавшихся пользователях в БД"
         conn = connect_db()
         cursor = conn.cursor()
 
