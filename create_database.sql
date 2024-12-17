@@ -257,6 +257,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DO $$
+BEGIN
+    -- Проверяем, существует ли триггер
+    IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_update_average_grade') THEN
+        -- Если триггер существует, удаляем его
+        DROP TRIGGER trigger_update_average_grade ON grades;
+    END IF;
+END $$;
+
 CREATE TRIGGER trigger_update_average_grade
 AFTER INSERT OR DELETE OR UPDATE ON grades
 FOR EACH ROW
@@ -386,11 +395,11 @@ WHERE
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION record_exist(student_id INT, subject_id INT)
+CREATE OR REPLACE FUNCTION record_exist(p_student_id INT, p_subject_id INT)
 RETURNS SETOF grades AS $$
 BEGIN
     RETURN QUERY
-    SELECT * FROM grades WHERE student_id = student_id AND subject_id = subject_id;
+    SELECT * FROM grades WHERE student_id = p_student_id AND subject_id = p_subject_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -403,3 +412,5 @@ CREATE OR REPLACE FUNCTION get_grade(p_student_id INT, p_subject_id INT)
        WHERE g.student_id = p_student_id AND g.subject_id = p_subject_id;
    END;
    $$ LANGUAGE plpgsql;
+
+
