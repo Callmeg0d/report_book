@@ -1,6 +1,7 @@
 from PyQt5 import QtWidgets, QtCore
 import psycopg2
 import os
+import subprocess
 
 from dotenv import load_dotenv
 
@@ -10,6 +11,9 @@ DB_NAME = os.getenv('DB_NAME')
 DB_USER = os.getenv('DB_USER')
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_HOST = os.getenv('DB_HOST')
+
+APP_DB_USER = os.getenv('APP_DB_USER')
+APP_DB_PASSWORD = os.getenv('APP_DB_PASSWORD')
 
 
 class StudentProfile(QtWidgets.QWidget):
@@ -100,8 +104,8 @@ class StudentProfile(QtWidgets.QWidget):
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD,
+                user=APP_DB_USER,
+                password=APP_DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -202,6 +206,14 @@ class TeacherProfile(QtWidgets.QWidget):
 
         layout.addStretch(1)
 
+        # Кнопка для очистки всей таблицы grades
+        self.clear_table_button = QtWidgets.QPushButton("Очистить все оценки")
+        self.clear_table_button.setStyleSheet("background-color: orange; color: black; font-weight: bold;")
+        self.clear_table_button.clicked.connect(self.clear_grades_table)
+        layout.addWidget(self.clear_table_button)
+
+        layout.addStretch(1)
+
         self.delete_db_button = QtWidgets.QPushButton("Удалить всю базу данных")
         self.delete_db_button.setStyleSheet("background-color: red; color: white; font-weight: bold;")
         self.delete_db_button.clicked.connect(self.delete_database)
@@ -260,8 +272,8 @@ class TeacherProfile(QtWidgets.QWidget):
 
         conn = psycopg2.connect(
             dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
+            user=APP_DB_USER,
+            password=APP_DB_PASSWORD,
             host=DB_HOST
         )
         cursor = conn.cursor()
@@ -279,15 +291,20 @@ class TeacherProfile(QtWidgets.QWidget):
             QtWidgets.QMessageBox.information(self, "Результат поиска", "Студент не найден.")
 
     def open_grade_form(self, teacher_id):
-        self.grade_form = GradeForm(teacher_id)
+        self.grade_form = GradeForm(teacher_id=teacher_id, update_table_callback=self.update_table)
         self.grade_form.show()
+
+    def update_table(self):
+        """Обновляет таблицу оценок."""
+        self.grades_info = self.get_grades_for_teacher(self.teacher_id)
+        self.insert_data_in_table(self.grades_info)
 
     def get_grades_for_teacher(self, teacher_id):
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD,
+                user=APP_DB_USER,
+                password=APP_DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -322,9 +339,6 @@ class TeacherProfile(QtWidgets.QWidget):
 
         if reply == QtWidgets.QMessageBox.Yes:
             try:
-                import psycopg2
-                from main.ui.login import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
-
                 conn = psycopg2.connect(
                     dbname="postgres", user=DB_USER, password=DB_PASSWORD, host=DB_HOST
                 )
@@ -355,8 +369,8 @@ class TeacherProfile(QtWidgets.QWidget):
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD,
+                user=APP_DB_USER,
+                password=APP_DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -388,12 +402,47 @@ class TeacherProfile(QtWidgets.QWidget):
             if conn:
                 conn.close()
 
+    def clear_grades_table(self):
+        """
+        Метод для очистки всей таблицы grades
+        """
+        reply = QtWidgets.QMessageBox.question(
+            self, "Подтверждение", "Вы уверены, что хотите удалить все оценки из таблицы?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            try:
+                import psycopg2
+                from main.ui.login import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+
+                # Подключение к базе данных
+                conn = psycopg2.connect(
+                    dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST
+                )
+                cursor = conn.cursor()
+
+                cursor.execute("SELECT truncate_grades_table();")
+                conn.commit()
+
+                QtWidgets.QMessageBox.information(self, "Успех", "Все оценки были успешно удалены.")
+                self.table_widget.clearContents()  # Очистка интерфейса таблицы
+                self.table_widget.setRowCount(0)  # Устанавливаем нулевое количество строк
+
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "Ошибка", f"Не удалось очистить таблицу: {e}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
     def delete_grade_from_database(self, first_name, last_name, middle_name, teacher_id, subject_name):
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD,
+                user=APP_DB_USER,
+                password=APP_DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -435,9 +484,10 @@ class GradeForm(QtWidgets.QWidget):
     Форма, содержащая поля для внесения данных студента и оценки
     """
 
-    def __init__(self, teacher_id):
+    def __init__(self, teacher_id, update_table_callback):
         super().__init__()
         self.teacher_id = teacher_id  # ID преподавателя, который авторизован
+        self.update_table_callback = update_table_callback
         self.setWindowTitle("Выставление оценки")
         self.setGeometry(675, 300, 600, 450)
         layout = QtWidgets.QVBoxLayout()
@@ -501,7 +551,7 @@ class GradeForm(QtWidgets.QWidget):
             return
 
         try:
-            conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
+            conn = psycopg2.connect(dbname=DB_NAME, user=APP_DB_USER, password=APP_DB_PASSWORD, host=DB_HOST)
             cursor = conn.cursor()
 
             # Получаем id студента
@@ -536,6 +586,9 @@ class GradeForm(QtWidgets.QWidget):
                                    (student_id, subject_id, self.teacher_id, grade))
                     conn.commit()
                     QtWidgets.QMessageBox.information(self, "Успех", "Оценка успешно выставлена!")
+                    # Обновляем таблицу
+                    if self.update_table_callback:
+                        self.update_table_callback()
 
             else:
                 QtWidgets.QMessageBox.warning(self, "Ошибка", "Студент не найден.")
