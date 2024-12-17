@@ -31,14 +31,14 @@ CREATE TABLE IF NOT EXISTS students (
 CREATE TABLE IF NOT EXISTS subjects (
             id SERIAL PRIMARY KEY,
             name VARCHAR(50),
-            teacher_id INTEGER REFERENCES teachers(id)
+            teacher_id INTEGER UNIQUE REFERENCES teachers(id)
             );
 
 CREATE TABLE IF NOT EXISTS grades (
     id SERIAL PRIMARY KEY,
     student_id INTEGER REFERENCES students(id),
     subject_id INTEGER REFERENCES subjects(id),
-    teacher_id INTEGER REFERENCES teachers(id),
+    teacher_id INTEGER REFERENCES subjects(teacher_id),
     grade INTEGER,
     UNIQUE (student_id, subject_id)
 );
