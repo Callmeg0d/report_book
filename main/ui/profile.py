@@ -1,7 +1,6 @@
 from PyQt5 import QtWidgets, QtCore
 import psycopg2
 import os
-import subprocess
 
 from dotenv import load_dotenv
 
@@ -12,100 +11,109 @@ DB_USER = os.getenv('DB_USER')
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_HOST = os.getenv('DB_HOST')
 
-APP_DB_USER = os.getenv('APP_DB_USER')
-APP_DB_PASSWORD = os.getenv('APP_DB_PASSWORD')
-
 
 class StudentProfile(QtWidgets.QWidget):
     """
-    Интерфейс студента с правами только просмотра
+    Интерфейс студента с правами только просмотра.
     """
+
+    COLUMN_WIDTHS = [300, 100, 150]  # Ширина колонок
+    WINDOW_SIZE = (1000, 700)  # Размер окна
 
     def __init__(self, first_name, last_name, middle_name, student_id):
         super().__init__()
 
         self.setWindowTitle("Профиль студента")
-        self.setGeometry(470, 200, 1000, 700)
+        self.setGeometry(470, 200, *self.WINDOW_SIZE)
 
+        # Основной layout
         layout = QtWidgets.QVBoxLayout()
 
+        # Центрированный виджет с информацией
         central_widget = QtWidgets.QWidget()
-        central_layout = QtWidgets.QVBoxLayout(central_widget)
+        self.central_layout = QtWidgets.QVBoxLayout(central_widget)
+        self.central_layout.setAlignment(QtCore.Qt.AlignTop)
 
-        central_layout.addStretch(1)
-
-        self.name_label = QtWidgets.QLabel(f"Пользователь: {first_name} {last_name} {middle_name}")
-        self.name_label.setAlignment(QtCore.Qt.AlignCenter)
-        central_layout.addWidget(self.name_label)
-
-        group_name, average_grade, subjects_info = self.get_student_info(student_id)
-
-        self.group_label = QtWidgets.QLabel(f"Группа: {group_name}")
-        self.group_label.setAlignment(QtCore.Qt.AlignCenter)
-        central_layout.addWidget(self.group_label)
-
-        self.grade_label = QtWidgets.QLabel(f"Средний балл: {average_grade:.2f}")
-        self.grade_label.setAlignment(QtCore.Qt.AlignCenter)
-        central_layout.addWidget(self.grade_label)
-
-        central_layout.addStretch(1)
-
-        # Создаем таблицу для отображения оценок
-        self.table_widget = QtWidgets.QTableWidget()
-
-        group_name, average_grade, subjects_info = self.get_student_info(student_id)
-
-        num_rows = len(subjects_info)
-        self.table_widget.setRowCount(num_rows if num_rows > 0 else 1)  # Устанавливаем 1 строку, если нет оценок
-        self.table_widget.setColumnCount(3)
-
-        # Устанавливаем заголовки таблицы
-        self.table_widget.setHorizontalHeaderLabels(["Предмет", "Оценка", "Преподаватель"])
-
-        if subjects_info:
-            for row_index, (subject_name, grade, teacher_full_name) in enumerate(subjects_info):
-                subject_item = QtWidgets.QTableWidgetItem(subject_name)
-                subject_item.setTextAlignment(QtCore.Qt.AlignCenter)
-                self.table_widget.setItem(row_index, 0, subject_item)
-
-                grade_item = QtWidgets.QTableWidgetItem(str(grade))
-                grade_item.setTextAlignment(QtCore.Qt.AlignCenter)
-                self.table_widget.setItem(row_index, 1, grade_item)
-
-                teacher_item = QtWidgets.QTableWidgetItem(teacher_full_name)
-                teacher_item.setTextAlignment(QtCore.Qt.AlignCenter)
-                self.table_widget.setItem(row_index, 2, teacher_item)
-        else:  # Если нет оценок, оставляем первую строку пустой
-            self.table_widget.setItem(0, 0, QtWidgets.QTableWidgetItem(""))
-            self.table_widget.setItem(0, 1, QtWidgets.QTableWidgetItem(""))
-            self.table_widget.setItem(0, 2, QtWidgets.QTableWidgetItem(""))
-
-        self.table_widget.setColumnWidth(0, 300)
-        self.table_widget.setColumnWidth(1, 100)
-        self.table_widget.setColumnWidth(2, 150)
-
-        # Центрируем таблицу
-        self.table_widget.horizontalHeader().setStretchLastSection(True)
-
-        # Устанавливаем размер таблицы
-        self.table_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-
-        # Запрет редактирования ячеек
-        self.table_widget.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-
-        central_layout.addWidget(self.table_widget)
-
-        central_layout.addStretch(6)
+        self.init_user_info(first_name, last_name, middle_name, student_id)
+        self.init_subject_table(student_id)
 
         layout.addWidget(central_widget)
         self.setLayout(layout)
+
+    def init_user_info(self, first_name, last_name, middle_name, student_id):
+        """
+        Инициализация блока с основной информацией студента.
+        """
+        # Строки информации
+        group_name, average_grade, _ = self.get_student_info(student_id)
+
+        user_info = [
+            f"Пользователь: {first_name} {last_name} {middle_name}",
+            f"Группа: {group_name}",
+            f"Средний балл: {average_grade:.2f}",
+        ]
+
+        for info in user_info:
+            label = QtWidgets.QLabel(info)
+            label.setAlignment(QtCore.Qt.AlignCenter)
+            self.central_layout.addWidget(label)
+
+        self.central_layout.addStretch(1)
+
+    def init_subject_table(self, student_id):
+        """
+        Инициализация таблицы с предметами и оценками.
+        """
+        _, _, subjects_info = self.get_student_info(student_id)
+
+        # Создаем таблицу
+        self.table_widget = QtWidgets.QTableWidget()
+        self.table_widget.setColumnCount(3)
+        self.table_widget.setHorizontalHeaderLabels(["Предмет", "Оценка", "Преподаватель"])
+
+        # Добавляем данные в таблицу
+        self.populate_subject_table(subjects_info)
+
+        # Настройка таблицы
+        for i, width in enumerate(self.COLUMN_WIDTHS):
+            self.table_widget.setColumnWidth(i, width)
+        self.table_widget.horizontalHeader().setStretchLastSection(True)
+        self.table_widget.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        # Добавляем таблицу в layout
+        self.central_layout.addWidget(self.table_widget)
+
+        self.central_layout.addStretch(6)
+
+    def populate_subject_table(self, subjects_info):
+        """
+        Заполнение таблицы данными.
+        """
+        if subjects_info:
+            self.table_widget.setRowCount(len(subjects_info))
+            for row_index, (subject_name, grade, teacher_full_name) in enumerate(subjects_info):
+                self.add_table_item(row_index, 0, subject_name)
+                self.add_table_item(row_index, 1, str(grade))
+                self.add_table_item(row_index, 2, teacher_full_name)
+        else:
+            self.table_widget.setRowCount(1)
+            for col in range(3):
+                self.add_table_item(0, col, "")
+
+    def add_table_item(self, row, column, text):
+        """
+        Добавляет элемент в таблицу.
+        """
+        item = QtWidgets.QTableWidgetItem(text)
+        item.setTextAlignment(QtCore.Qt.AlignCenter)
+        self.table_widget.setItem(row, column, item)
 
     def get_student_info(self, student_id):
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=APP_DB_USER,
-                password=APP_DB_PASSWORD,
+                user=DB_USER,
+                password=DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -206,22 +214,10 @@ class TeacherProfile(QtWidgets.QWidget):
 
         layout.addStretch(1)
 
-        # Кнопка для очистки всей таблицы grades
-        self.clear_table_button = QtWidgets.QPushButton("Очистить все оценки")
-        self.clear_table_button.setStyleSheet("background-color: orange; color: black; font-weight: bold;")
-        self.clear_table_button.clicked.connect(self.clear_grades_table)
-        layout.addWidget(self.clear_table_button)
-
-        layout.addStretch(1)
-
-        self.delete_db_button = QtWidgets.QPushButton("Удалить всю базу данных")
-        self.delete_db_button.setStyleSheet("background-color: red; color: white; font-weight: bold;")
-        self.delete_db_button.clicked.connect(self.delete_database)
-        layout.addWidget(self.delete_db_button)
-
         self.setLayout(layout)
 
     def delete_selected_rows(self):
+        """Удаляет выбранные записи из таблицы оценок """
         selected_rows = sorted(
             set(index.row() for index in self.table_widget.selectedIndexes()))
         if selected_rows:
@@ -272,8 +268,8 @@ class TeacherProfile(QtWidgets.QWidget):
 
         conn = psycopg2.connect(
             dbname=DB_NAME,
-            user=APP_DB_USER,
-            password=APP_DB_PASSWORD,
+            user=DB_USER,
+            password=DB_PASSWORD,
             host=DB_HOST
         )
         cursor = conn.cursor()
@@ -291,6 +287,7 @@ class TeacherProfile(QtWidgets.QWidget):
             QtWidgets.QMessageBox.information(self, "Результат поиска", "Студент не найден.")
 
     def open_grade_form(self, teacher_id):
+        """Открывает таблицу оценок."""
         self.grade_form = GradeForm(teacher_id=teacher_id, update_table_callback=self.update_table)
         self.grade_form.show()
 
@@ -300,11 +297,12 @@ class TeacherProfile(QtWidgets.QWidget):
         self.insert_data_in_table(self.grades_info)
 
     def get_grades_for_teacher(self, teacher_id):
+        """Получаем таблицу выставленных оценок в профиле каждого преподавателя"""
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=APP_DB_USER,
-                password=APP_DB_PASSWORD,
+                user=DB_USER,
+                password=DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -329,48 +327,13 @@ class TeacherProfile(QtWidgets.QWidget):
         else:
             return []
 
-    def delete_database(self):
-        """Удаляет всю базу данных, завершив активные подключения, и закрывает приложение."""
-        reply = QtWidgets.QMessageBox.question(
-            self, "Подтверждение удаления",
-            "Вы уверены, что хотите удалить всю базу данных? Это действие необратимо. Приложение будет закрыто.",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
-        )
-
-        if reply == QtWidgets.QMessageBox.Yes:
-            try:
-                conn = psycopg2.connect(
-                    dbname="postgres", user=DB_USER, password=DB_PASSWORD, host=DB_HOST
-                )
-                conn.autocommit = True
-                cursor = conn.cursor()
-
-                # Завершаем все подключения к базе данных
-                cursor.execute(f"""
-                    SELECT pg_terminate_backend(pg_stat_activity.pid)
-                    FROM pg_stat_activity
-                    WHERE pg_stat_activity.datname = '{DB_NAME}' 
-                    AND pid <> pg_backend_pid();
-                """)
-
-                cursor.execute(f"DROP DATABASE {DB_NAME}")
-                QtWidgets.QMessageBox.information(self, "Успех", f"База данных {DB_NAME} была удалена успешно.")
-
-                QtWidgets.QApplication.quit()
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(self, "Ошибка", f"Не удалось удалить базу данных: {e}")
-            finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    conn.close()
-
     def save_grades(self):
+        """Обновляет уже выставленную оценку"""
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=APP_DB_USER,
-                password=APP_DB_PASSWORD,
+                user=DB_USER,
+                password=DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -402,47 +365,14 @@ class TeacherProfile(QtWidgets.QWidget):
             if conn:
                 conn.close()
 
-    def clear_grades_table(self):
-        """
-        Метод для очистки всей таблицы grades
-        """
-        reply = QtWidgets.QMessageBox.question(
-            self, "Подтверждение", "Вы уверены, что хотите удалить все оценки из таблицы?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
-        )
-
-        if reply == QtWidgets.QMessageBox.Yes:
-            try:
-                import psycopg2
-                from main.ui.login import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
-
-                # Подключение к базе данных
-                conn = psycopg2.connect(
-                    dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST
-                )
-                cursor = conn.cursor()
-
-                cursor.execute("SELECT truncate_grades_table();")
-                conn.commit()
-
-                QtWidgets.QMessageBox.information(self, "Успех", "Все оценки были успешно удалены.")
-                self.table_widget.clearContents()  # Очистка интерфейса таблицы
-                self.table_widget.setRowCount(0)  # Устанавливаем нулевое количество строк
-
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(self, "Ошибка", f"Не удалось очистить таблицу: {e}")
-            finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    conn.close()
-
     def delete_grade_from_database(self, first_name, last_name, middle_name, teacher_id, subject_name):
+        """Удаляет уже выставленные оценки из таблицы grades и, если id предмета больше не используется, то удаляет и запись
+        с ним из таблицы subjects"""
         try:
             conn = psycopg2.connect(
                 dbname=DB_NAME,
-                user=APP_DB_USER,
-                password=APP_DB_PASSWORD,
+                user=DB_USER,
+                password=DB_PASSWORD,
                 host=DB_HOST
             )
             cursor = conn.cursor()
@@ -519,6 +449,7 @@ class GradeForm(QtWidgets.QWidget):
         self.setLayout(layout)
 
     def submit_grade(self):
+        """Выставляет оценки в таблицу."""
         first_name = self.first_name_input.text()
         last_name = self.last_name_input.text()
         group_name = self.group_input.text()
@@ -551,7 +482,7 @@ class GradeForm(QtWidgets.QWidget):
             return
 
         try:
-            conn = psycopg2.connect(dbname=DB_NAME, user=APP_DB_USER, password=APP_DB_PASSWORD, host=DB_HOST)
+            conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST)
             cursor = conn.cursor()
 
             # Получаем id студента
